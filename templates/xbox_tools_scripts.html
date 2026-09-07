@@ -1,0 +1,119 @@
+// ── Xbox / Game Pass for PC ─────────────────────────────────────────────────
+
+let _xboxSyncPollInterval = null;
+
+function _xboxSyncStatusText(d) {
+    if (d.phase === 'fetching') return 'Fetching title history...';
+    if (d.phase === 'processing') {
+        const game = d.current_game ? `: ${d.current_game}` : '';
+        const pct  = d.total > 0 ? ` (${d.done}/${d.total})` : '';
+        return `Adding games${pct}${game}`;
+    }
+    if (d.phase === 'stopped') return 'Sync stopped';
+    if (d.phase === 'error')   return d.error || 'Sync failed';
+    return 'Syncing...';
+}
+
+function _xboxSetSyncRunning(running) {
+    const btn = document.querySelector('button[onclick="xboxSync()"]')
+             || document.querySelector('button[onclick="xboxStopSync()"]');
+    if (!btn) return;
+    if (running) {
+        btn.textContent = 'Stop Sync';
+        btn.setAttribute('onclick', 'xboxStopSync()');
+    } else {
+        btn.textContent = 'Sync Library';
+        btn.setAttribute('onclick', 'xboxSync()');
+    }
+}
+
+async function xboxStopSync() {
+    const st = document.getElementById('xbox-manage-status-main');
+    if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = 'Stopping...'; }
+    await fetch('/api/xbox/sync/cancel', { method: 'POST' });
+}
+
+async function xboxSync() {
+    const st = document.getElementById('xbox-manage-status-main');
+    if (!st) return;
+    st.style.color = 'var(--text-secondary)';
+    st.textContent = 'Starting sync...';
+    try {
+        const r = await fetch('/api/xbox/sync', { method: 'POST' });
+        const d = await r.json();
+        if (d.error || d.status === 'error') {
+            st.style.color = 'var(--text-danger)';
+            st.textContent = d.error || d.message || 'Sync failed';
+            return;
+        }
+    } catch (e) {
+        st.style.color = 'var(--text-danger)';
+        st.textContent = 'Network error';
+        return;
+    }
+    _xboxSetSyncRunning(true);
+    _xboxStartSyncPoll(st);
+}
+
+function _xboxStartSyncPoll(st) {
+    if (_xboxSyncPollInterval) return;
+    _xboxSyncPollInterval = setInterval(async () => {
+        try {
+            const r = await fetch('/api/xbox/sync/status');
+            const d = await r.json();
+            if (st) {
+                st.style.color = d.phase === 'error' ? 'var(--text-danger)' : 'var(--text-secondary)';
+                st.textContent = _xboxSyncStatusText(d);
+            }
+            if (d.phase === 'done' || d.phase === 'stopped' || d.phase === 'error') {
+                clearInterval(_xboxSyncPollInterval);
+                _xboxSyncPollInterval = null;
+                _xboxSetSyncRunning(false);
+                if (d.phase === 'error') return;
+                const newGames = d.new_games || 0, total = d.total_games || 0;
+                const stopped  = d.phase === 'stopped';
+                const prefix = stopped ? 'Stopped' : 'Done';
+                if (st) {
+                    st.style.color = 'var(--accent-positive, #5c7e10)';
+                    st.textContent = `${prefix} — ${newGames} new game${newGames !== 1 ? 's' : ''} (${total} Xbox PC titles total)`;
+                }
+                if (newGames > 0) setTimeout(() => location.reload(), 2000);
+            }
+        } catch (_) {}
+    }, 1000);
+}
+
+async function xboxOpenApp() {
+    const btn = document.querySelector('button[onclick="xboxOpenApp()"]');
+    const st  = document.getElementById('xbox-manage-status-main');
+    if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
+    try {
+        const r = await fetch('/api/xbox/open-launcher', { method: 'POST' });
+        const d = await r.json();
+        if (d.status !== 'success' && st) {
+            st.style.color = 'var(--text-danger)';
+            st.textContent = d.message || 'Could not open the Xbox app';
+        }
+    } catch (e) {
+        if (st) { st.style.color = 'var(--text-danger)'; st.textContent = 'Network error'; }
+    } finally {
+        if (btn) { btn.disabled = false; btn.textContent = 'Open Xbox App'; }
+    }
+}
+
+function _xboxResumePolling() {
+    const st = document.getElementById('xbox-manage-status-main');
+    fetch('/api/xbox/sync/status')
+        .then(r => r.json())
+        .then(d => {
+            if (d.running) {
+                if (st) { st.style.color = 'var(--text-secondary)'; st.textContent = _xboxSyncStatusText(d); }
+                _xboxSetSyncRunning(true);
+                _xboxStartSyncPoll(st);
+            }
+        }).catch(() => {});
+}
+
+if (typeof _manageOnOpen !== 'undefined') {
+    (_manageOnOpen['xbox'] = _manageOnOpen['xbox'] || []).push(_xboxResumePolling);
+}

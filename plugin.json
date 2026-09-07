@@ -1,0 +1,17 @@
+{
+    "id": "xbox",
+    "name": "Xbox / Game Pass for PC",
+    "version": "1.0.0",
+    "min_core_version": "1.10.4",
+    "platform": "xbox",
+    "author": "RobbyRatpoison",
+    "launcher": {
+        "required": false
+    },
+    "source": "github:RobbyRatpoison/playdate-plugin-xbox",
+    "platform_status": {
+        "windows": "untested",
+        "linux": "broken",
+        "mac": "broken"
+    }
+}
