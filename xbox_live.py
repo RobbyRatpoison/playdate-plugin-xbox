@@ -296,6 +296,35 @@ def _pick_xbox_image(title, orientation):
     return None
 
 
+def art_urls(appid):
+    """Where Xbox's own artwork for one game lives, for core's Artwork Sources
+    "Store" option: {'vertical'|'horizontal'|'icon': url}, any subset. Re-fetches
+    the title (as a Re-scrape does), so {} when not connected or not found."""
+    if not is_connected():
+        return {}
+    from database import get_db
+    db  = get_db()
+    row = db.execute(
+        "SELECT platform_appname FROM games WHERE appid = ? AND platform = 'xbox'", (appid,)
+    ).fetchone()
+    db.close()
+    if not row or not row['platform_appname']:
+        return {}
+    try:
+        title = _fetch_single_title(row['platform_appname'])
+    except Exception as e:
+        log.warning('Xbox: art_urls fetch failed for appid %s: %s', appid, e)
+        return {}
+    if not title:
+        return {}
+    urls = {}
+    for kind in ('vertical', 'horizontal', 'icon'):
+        url = _pick_xbox_image(title, kind)
+        if url:
+            urls[kind] = url
+    return urls
+
+
 def _fetch_art(appid, name, title):
     try:
         from images import (_sgdb_search_game_id, download_vertical, download_horizontal,

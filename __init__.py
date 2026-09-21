@@ -38,6 +38,10 @@ class XboxPlugin:
         from .xbox_live import scrape_single
         return scrape_single(appid) or None
 
+    def art_urls(self, appid):
+        from .xbox_live import art_urls
+        return art_urls(appid)
+
     def resync_installed(self):
         if sys.platform != 'win32':
             return
